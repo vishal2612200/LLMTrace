@@ -152,6 +152,16 @@ task -> selected context -> tool calls -> verification -> approval -> final acti
 
 It does not execute autonomous coding-agent actions yet. It records the control-system telemetry an agent harness would need: what context was selected, what tools were attempted, how risky each action was, which deterministic checks ran, whether a human approval was required, and how failures were classified.
 
+An agent execution runtime would be a natural extension, but it is intentionally out of scope for this submission. Adding execution safely would require more than calling tools from the API; it would need typed tool permissions, sandboxing, approval enforcement, retries, rollback strategy, verification gates, and security review. For the assignment, the harness layer stays focused on observability and auditability rather than shipping a fragile autonomous runtime.
+
+Suggested upgrade path:
+
+1. Observe agent runs, tools, approvals, verification, and evals.
+2. Add a typed tool registry with dry-run execution.
+3. Enforce approval gates for high-risk tools.
+4. Add automated verification and eval runners.
+5. Add sandboxing, RBAC, rollback hooks, and a policy engine.
+
 ## Eval Fixtures
 
 JSON-backed eval examples live under `evals/coding-agent/`.
@@ -224,6 +234,7 @@ This implementation optimizes for correctness, debuggability, and clear replacem
 ## Improve With More Time
 
 - Extract ingestion SDK into versioned Python/npm packages.
+- Extend harness observability into an execution runtime through typed tools, dry-run mode, approval enforcement, verification runners, sandboxing, RBAC, rollback hooks, and policy checks.
 - Replace demo ingestion key with tenant/project scoped auth, RBAC, and distributed rate limits.
 - Add OpenTelemetry tracing across chat, provider, ingestion, worker, and analytics writes.
 - Add richer worker backpressure controls.

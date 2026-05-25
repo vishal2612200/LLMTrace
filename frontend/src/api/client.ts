@@ -72,6 +72,90 @@ export type DlqEntry = {
   error?: string;
 };
 
+export type AgentRunSummary = {
+  id: string;
+  name: string;
+  task: string;
+  status: string;
+  failure_category: string;
+  started_at: string;
+  ended_at: string | null;
+  latency_ms: number | null;
+  tool_count: number;
+  verification_status: string;
+  approval_status: string;
+};
+
+export type ToolCall = {
+  id: string;
+  tool_name: string;
+  tool_input_json: Record<string, unknown>;
+  tool_output_preview: string | null;
+  status: string;
+  latency_ms: number | null;
+  retry_count: number;
+  risk_level: string;
+  error_message: string | null;
+  created_at: string;
+};
+
+export type VerificationResult = {
+  id: string;
+  check_type: string;
+  command: string | null;
+  status: string;
+  expected_files: string[];
+  forbidden_files: string[];
+  result_summary: string | null;
+  created_at: string;
+};
+
+export type HumanApproval = {
+  id: string;
+  tool_call_id: string | null;
+  risk_level: string;
+  action: string;
+  status: string;
+  approver: string | null;
+  decision_reason: string | null;
+  created_at: string;
+  decided_at: string | null;
+};
+
+export type EvalCase = {
+  id: string;
+  name: string;
+  category: string;
+  task: string;
+  expected_behavior: string;
+  expected_files: string[];
+  forbidden_files: string[];
+  success_checks: string[];
+  created_at: string;
+};
+
+export type AgentRunDetail = AgentRunSummary & {
+  created_at: string;
+  context_summary: string | null;
+  selected_context: Record<string, unknown>;
+  final_action: string | null;
+  human_override: boolean;
+  tool_calls: ToolCall[];
+  verification_results: VerificationResult[];
+  approvals: HumanApproval[];
+  eval_runs: Array<Record<string, unknown>>;
+};
+
+export type HarnessMetricsSummary = {
+  run_count: number;
+  pass_rate: number;
+  failure_categories: Record<string, number>;
+  approval_counts: Record<string, number>;
+  average_tool_latency_ms: number;
+  pending_high_risk_approvals: number;
+  most_common_failure_category: string;
+};
+
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`);
   if (!response.ok) throw new Error(await response.text());
@@ -98,6 +182,15 @@ export const api = {
     });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
+  },
+  harnessRuns: () => getJson<AgentRunSummary[]>("/api/harness/runs"),
+  harnessRun: (id: string) => getJson<AgentRunDetail>(`/api/harness/runs/${id}`),
+  harnessMetricsSummary: () => getJson<HarnessMetricsSummary>("/api/harness/metrics/summary"),
+  harnessEvals: () => getJson<EvalCase[]>("/api/harness/evals"),
+  loadHarnessFixtures: async () => {
+    const response = await fetch(`${API_BASE}/api/harness/evals/load-fixtures`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<{ loaded: number; skipped: number }>;
   },
   cancel: async (conversationId: string) => {
     const response = await fetch(`${API_BASE}/api/chat/${conversationId}/cancel`, { method: "POST" });

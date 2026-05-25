@@ -131,3 +131,15 @@ Tradeoff: manifests alone are not full production ops.
 What breaks at scale: production needs secrets, autoscaling, ingress TLS, monitoring, and rollout strategy.
 
 Upgrade path: Helm/Kustomize, HPA, external secrets, ingress TLS, Grafana dashboards, alerts, and runbooks.
+
+## Harness Observability as Additive Layer
+
+Decision: add agent run, tool-call, verification, approval, failure-taxonomy, and eval-case telemetry beside inference logging rather than replacing it.
+
+Why chosen now: inference observability and harness observability answer different questions. Inference logs show provider/model/latency/token/status behavior for LLM calls. Harness logs show the control loop around agent work: selected context, chosen tools, deterministic checks, approval gates, final action, and failure category. Keeping them separate preserves the existing assignment requirements while demonstrating production agent-harness thinking.
+
+Tradeoff: the implementation records harness activity but does not yet execute tools, enforce external permissions, or run evals automatically.
+
+What breaks at scale: without an execution engine, policy service, and eval runner, approval state is advisory telemetry rather than a hard runtime gate.
+
+Upgrade path: connect typed permissioned tools, an approval enforcement layer, automated verification runners, eval-run orchestration, and trace correlation between inference requests and agent runs.

@@ -307,6 +307,22 @@ button:disabled {
   padding: 0;
 }
 
+.link-button {
+  min-height: auto;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  color: var(--primary);
+}
+
+.link-button:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  color: var(--primary-strong);
+}
+
 .chat-layout {
   display: grid;
   grid-template-rows: minmax(390px, calc(100vh - 306px)) auto;
@@ -654,6 +670,51 @@ th {
   text-overflow: ellipsis;
 }
 
+.detail-stack {
+  display: grid;
+  gap: 14px;
+}
+
+.detail-stack > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.detail-stack span,
+.eval-card span,
+.eval-card small {
+  color: var(--ink-muted);
+  line-height: 1.45;
+}
+
+.detail-stack code {
+  display: block;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-tint);
+  padding: 10px;
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.eval-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.eval-card {
+  display: grid;
+  gap: 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+  padding: 13px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -689,7 +750,7 @@ th {
   }
 
   .nav-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
   .nav-list button {
@@ -713,7 +774,8 @@ th {
   }
 
   .metric-grid,
-  .dashboard-grid {
+  .dashboard-grid,
+  .eval-grid {
     grid-template-columns: 1fr;
   }
 

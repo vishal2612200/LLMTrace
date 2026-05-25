@@ -11,6 +11,7 @@ Fullstack LLM inference logging and ingestion system for the engineering assignm
 - Sensitive-data redaction before logs, queues, analytics, traces, or database writes.
 - Postgres storage for conversations, messages, inference requests, redacted event payloads, and redaction audit metadata.
 - Dashboard for request volume, latency, errors, token usage, and provider/model breakdown.
+- Harness observability for agent runs, selected context, tool calls, deterministic verification, approval gates, failure taxonomy, and eval cases.
 - Docker Compose setup plus self-hosted Kubernetes manifests.
 
 ## Quick Start
@@ -89,6 +90,16 @@ npm run dev
 | `GET` | `/api/metrics/summary` | Totals, p50/p95 latency, errors, and tokens. |
 | `GET` | `/api/metrics/timeseries` | Request/error/latency series for charts. |
 | `GET` | `/api/metrics/providers` | Provider and model breakdown. |
+| `POST` | `/api/harness/runs` | Creates an agent run with task and selected context. |
+| `PATCH` | `/api/harness/runs/{run_id}` | Completes/fails/cancels an agent run and records final action/failure category. |
+| `POST` | `/api/harness/runs/{run_id}/tool-calls` | Stores redacted tool input/output telemetry. High-risk calls create pending approvals. |
+| `POST` | `/api/harness/runs/{run_id}/verification-results` | Stores deterministic verification results such as tests, lint, forbidden-file checks, or schema validation. |
+| `POST` | `/api/harness/approvals/{approval_id}/decision` | Records an approval or rejection decision. |
+| `GET` | `/api/harness/runs` | Lists recent agent runs with status, risk, failure, verification, and approval summaries. |
+| `GET` | `/api/harness/runs/{run_id}` | Returns run detail with tool calls, verification results, approvals, and eval runs. |
+| `GET` | `/api/harness/metrics/summary` | Agent run counts, pass rate, failure categories, approval counts, and tool latency. |
+| `GET` | `/api/harness/evals` | Lists loaded eval cases. |
+| `POST` | `/api/harness/evals/load-fixtures` | Loads JSON eval fixtures from `evals/` into Postgres idempotently. |
 
 When `INGESTION_API_KEY` is set, ingestion and DLQ endpoints require `x-ingestion-key`.
 
@@ -102,7 +113,7 @@ docker compose config
 ./scripts/docker-smoke.sh
 ```
 
-The Docker smoke script validates one-command startup, `/health`, SSE chat streaming, redacted email/API-key output, conversation storage, worker ingestion, and metrics updates. It tears down containers and volumes when done.
+The Docker smoke script validates one-command startup, `/health`, SSE chat streaming, redacted email/API-key output, conversation storage, worker ingestion, metrics updates, harness run creation, high-risk approval creation, tool-call redaction, and eval fixture loading. It tears down containers and volumes when done.
 
 For browser-level smoke testing, start the backend on `127.0.0.1:8000` and frontend on `127.0.0.1:5173`, then run:
 
@@ -132,6 +143,27 @@ React UI
   -> Postgres
   -> metrics APIs / dashboard
 ```
+
+The harness layer is additive:
+
+```text
+task -> selected context -> tool calls -> verification -> approval -> final action -> eval feedback
+```
+
+It does not execute autonomous coding-agent actions yet. It records the control-system telemetry an agent harness would need: what context was selected, what tools were attempted, how risky each action was, which deterministic checks ran, whether a human approval was required, and how failures were classified.
+
+## Eval Fixtures
+
+JSON-backed eval examples live under `evals/coding-agent/`.
+
+Load them locally:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/harness/evals/load-fixtures
+curl http://127.0.0.1:8000/api/harness/evals
+```
+
+The loader is idempotent by `(name, category)`, so it is safe to run repeatedly during demos.
 
 ## Sensitive-Data Policy
 
@@ -166,6 +198,7 @@ The React UI also redacts common sensitive patterns in optimistic messages befor
 - Self-hosted k8s artifact: manifests in `deploy/k8s`.
 - Conversation cancel/list/resume: yes.
 - DLQ API/dashboard replay: yes.
+- Harness observability: yes, additive run/tool/verification/approval/eval tracking.
 
 ## Documentation
 
@@ -183,6 +216,7 @@ This implementation optimizes for correctness, debuggability, and clear replacem
 - Real OpenAI/Anthropic tests require provider API keys and are skipped by default.
 - Ingestion auth is a demo shared key, not tenant/project-scoped production auth.
 - Rate limiting is in-memory per backend process.
+- Harness APIs record and visualize agent control telemetry; they do not execute tools or enforce external runtime permissions yet.
 - Kubernetes manifests are deployable artifacts, not proof of a live cluster rollout.
 - Dashboards are eventually consistent because ingestion normalization is asynchronous.
 - Conversation context uses redacted previews, so recall is safer but less faithful than raw-content retention.

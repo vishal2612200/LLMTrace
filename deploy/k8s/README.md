@@ -24,7 +24,7 @@ For a real self-hosted cluster, build, tag, and push these images to your regist
 Example:
 
 ```bash
-docker build -t registry.example.com/llmtrace/backend:latest ../../backend
+docker build -f ../../backend/Dockerfile -t registry.example.com/llmtrace/backend:latest ../..
 docker build -t registry.example.com/llmtrace/frontend:latest ../../frontend
 docker push registry.example.com/llmtrace/backend:latest
 docker push registry.example.com/llmtrace/frontend:latest

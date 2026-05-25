@@ -1,0 +1,9 @@
+{
+  "name": "login redirect bug",
+  "category": "coding-agent",
+  "task": "Fix login redirect bug",
+  "expected_files": ["auth/middleware.ts", "routes/login.ts"],
+  "forbidden_files": ["billing/", "admin/"],
+  "expected_behavior": "Redirect user to dashboard after successful login",
+  "success_checks": ["unit tests pass", "redirect test passes", "no unrelated files changed"]
+}

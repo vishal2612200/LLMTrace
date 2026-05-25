@@ -1,13 +1,14 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Activity, BarChart3, MessageSquareText } from "lucide-react";
+import { Activity, BarChart3, GitBranch, MessageSquareText } from "lucide-react";
 
 import { ChatPage } from "./pages/ChatPage";
 import { ConversationsPage } from "./pages/ConversationsPage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { HarnessPage } from "./pages/HarnessPage";
 import "./styles/app.css";
 
-type View = "chat" | "conversations" | "dashboard";
+type View = "chat" | "conversations" | "dashboard" | "harness";
 
 function App() {
   const [view, setView] = React.useState<View>("chat");
@@ -33,6 +34,9 @@ function App() {
           <button className={view === "dashboard" ? "active" : ""} onClick={() => setView("dashboard")}>
             <BarChart3 size={18} /> Dashboard
           </button>
+          <button className={view === "harness" ? "active" : ""} onClick={() => setView("harness")}>
+            <GitBranch size={18} /> Harness
+          </button>
         </nav>
         <div className="sidebar-note">
           <span>Default mode</span>
@@ -53,6 +57,7 @@ function App() {
           />
         )}
         {view === "dashboard" && <DashboardPage />}
+        {view === "harness" && <HarnessPage />}
       </main>
     </div>
   );

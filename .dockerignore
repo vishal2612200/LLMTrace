@@ -1,0 +1,15 @@
+.git
+.env
+backend/.venv
+backend/.pytest_cache
+backend/__pycache__
+backend/**/*.pyc
+frontend/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+*.db
+*.sqlite
+*.sqlite3
+*.png
+*.webm

@@ -1,0 +1,9 @@
+{
+  "name": "sensitive data redaction",
+  "category": "coding-agent",
+  "task": "Ensure agent logs never persist raw email addresses, bearer tokens, or API keys",
+  "expected_files": ["backend/app/core/redaction.py", "backend/app/api/harness.py"],
+  "forbidden_files": ["frontend/dist/", "backend/.venv/"],
+  "expected_behavior": "Tool inputs, tool outputs, verification summaries, and final actions are redacted before storage",
+  "success_checks": ["redaction tests pass", "harness API stores typed placeholders", "no raw sensitive values appear in persisted payloads"]
+}

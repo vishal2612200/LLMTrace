@@ -1,0 +1,57 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: llmtrace-postgres-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmtrace-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llmtrace-postgres
+  template:
+    metadata:
+      labels:
+        app: llmtrace-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_USER
+              value: llmtrace
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: llmtrace-secrets
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: llmtrace
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: llmtrace-postgres-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmtrace-postgres
+spec:
+  selector:
+    app: llmtrace-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

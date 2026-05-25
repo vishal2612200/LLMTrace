@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmtrace-frontend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llmtrace-frontend
+  template:
+    metadata:
+      labels:
+        app: llmtrace-frontend
+    spec:
+      containers:
+        - name: frontend
+          image: llmtrace-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmtrace-frontend
+spec:
+  selector:
+    app: llmtrace-frontend
+  ports:
+    - port: 80
+      targetPort: 80

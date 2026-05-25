@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llmtrace-backend
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: llmtrace-backend
+  template:
+    metadata:
+      labels:
+        app: llmtrace-backend
+    spec:
+      containers:
+        - name: backend
+          image: llmtrace-backend:latest
+          imagePullPolicy: IfNotPresent
+          command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: llmtrace-config
+            - secretRef:
+                name: llmtrace-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llmtrace-backend
+spec:
+  selector:
+    app: llmtrace-backend
+  ports:
+    - port: 8000
+      targetPort: 8000

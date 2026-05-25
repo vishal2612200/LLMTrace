@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: llmtrace
+      POSTGRES_PASSWORD: llmtrace
+      POSTGRES_DB: llmtrace
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U llmtrace"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql://llmtrace:llmtrace@postgres:5432/llmtrace
+      REDIS_URL: redis://redis:6379/0
+      SDK_INGESTION_URL: http://127.0.0.1:8000/api/ingest/logs
+      INGESTION_API_KEY: dev-ingestion-key
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.ingestion.worker"]
+    env_file: .env.example
+    environment:
+      DATABASE_URL: postgresql://llmtrace:llmtrace@postgres:5432/llmtrace
+      REDIS_URL: redis://redis:6379/0
+      SDK_INGESTION_URL:
+      INGESTION_API_KEY: dev-ingestion-key
+    depends_on:
+      backend:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: http://localhost:8000
+        VITE_INGESTION_API_KEY: dev-ingestion-key
+    environment:
+      VITE_API_BASE: http://localhost:8000
+      VITE_INGESTION_API_KEY: dev-ingestion-key
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres-data:

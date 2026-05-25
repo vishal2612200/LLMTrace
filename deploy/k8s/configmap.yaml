@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: llmtrace-config
+data:
+  CORS_ORIGINS: "https://llmtrace.example.com"
+  DEFAULT_PROVIDER: "mock"
+  DEFAULT_MODEL: "mock-fast"
+  CONTEXT_WINDOW_MESSAGES: "8"
+  PREVIEW_CHARS: "500"
+  REDIS_URL: "redis://llmtrace-redis:6379/0"
+  SDK_INGESTION_URL: "http://127.0.0.1:8000/api/ingest/logs"
+  INGESTION_RATE_LIMIT_PER_MINUTE: "120"

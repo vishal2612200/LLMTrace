@@ -134,12 +134,24 @@ Upgrade path: Helm/Kustomize, HPA, external secrets, ingress TLS, Grafana dashbo
 
 ## Harness Observability as Additive Layer
 
-Decision: add agent run, tool-call, verification, approval, failure-taxonomy, and eval-case telemetry beside inference logging rather than replacing it.
+Decision: add agent run, tool-call, verification, approval, failure-taxonomy, dry-run tool execution, and eval-case telemetry beside inference logging rather than replacing it.
 
-Why chosen now: inference observability and harness observability answer different questions. Inference logs show provider/model/latency/token/status behavior for LLM calls. Harness logs show the control loop around agent work: selected context, chosen tools, deterministic checks, approval gates, final action, and failure category. Keeping them separate preserves the existing assignment requirements while demonstrating production agent-harness thinking.
+Why chosen now: inference observability and harness observability answer different questions. Inference logs show provider/model/latency/token/status behavior for LLM calls. Harness logs show the control loop around agent work: selected context, chosen tools, deterministic checks, approval gates, dry-run tool output, final action, and failure category. Keeping them separate preserves the existing assignment requirements while demonstrating production agent-harness thinking.
 
-Tradeoff: the implementation records harness activity but does not yet execute tools, enforce external permissions, or run evals automatically.
+Tradeoff: the implementation records harness activity and executes only registered dry-run handlers after approval. It does not yet execute arbitrary external tools, enforce production permissions, or run evals automatically.
 
-What breaks at scale: without an execution engine, policy service, and eval runner, approval state is advisory telemetry rather than a hard runtime gate.
+What breaks at scale: without a broader execution engine, policy service, and eval runner, approval state is advisory for most tools rather than a hard runtime gate.
 
-Upgrade path: connect typed permissioned tools, an approval enforcement layer, automated verification runners, eval-run orchestration, and trace correlation between inference requests and agent runs.
+Upgrade path: expand typed permissioned tools, add an approval enforcement layer, automated verification runners, eval-run orchestration, and trace correlation between inference requests and agent runs.
+
+## Conversation Context Management
+
+Decision: use full redacted content, token-budgeted recent turns, rolling summary, structured memory, and persisted checkpoints for chat resume.
+
+Why chosen now: plain "latest N preview messages" was easy to reason about but lost long-message content and gave no audit trail for what the model saw. The current design keeps raw secrets out of operational storage while making context inspectable through the Chat UI.
+
+Tradeoff: rolling summary and structured memory extraction are deterministic heuristics, not semantic long-term memory.
+
+What breaks at scale: large tenants need per-project retention policy, memory quality metrics, user-controlled pinned facts, and summarization/evaluation jobs outside the request path.
+
+Upgrade path: model-assisted summaries, user-editable memory, semantic sensitive-data detection, and context quality dashboards.

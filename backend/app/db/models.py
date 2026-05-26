@@ -19,9 +19,12 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc, index=True)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    rolling_summary: Mapped[str] = mapped_column(Text, default="")
+    structured_memory: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
     requests: Mapped[list["InferenceRequest"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
+    checkpoints: Mapped[list["ConversationCheckpoint"]] = relationship(back_populates="conversation", cascade="all, delete-orphan")
 
 
 class Message(Base):
@@ -31,12 +34,30 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
     role: Mapped[str] = mapped_column(String(32))
     preview: Mapped[str] = mapped_column(Text)
+    redacted_content: Mapped[str] = mapped_column(Text, default="")
     content_hash: Mapped[str] = mapped_column(String(64))
     token_count: Mapped[int] = mapped_column(Integer, default=0)
     redaction_metadata: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc)
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+
+
+class ConversationCheckpoint(Base):
+    __tablename__ = "conversation_checkpoints"
+    __table_args__ = (UniqueConstraint("conversation_id", "sequence", name="uq_conversation_checkpoint_sequence"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), index=True)
+    sequence: Mapped[int] = mapped_column(Integer)
+    reason: Mapped[str] = mapped_column(String(64), index=True)
+    summary: Mapped[str] = mapped_column(Text)
+    context_messages: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    message_count: Mapped[int] = mapped_column(Integer, default=0)
+    token_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, index=True)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="checkpoints")
 
 
 class InferenceRequest(Base):
@@ -84,6 +105,14 @@ class RedactionAudit(Base):
 
 
 Index("ix_inference_provider_model", InferenceRequest.provider, InferenceRequest.model)
+
+
+class RuntimeSetting(Base):
+    __tablename__ = "runtime_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class AgentRun(Base):

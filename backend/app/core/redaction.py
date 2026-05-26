@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.config import get_settings
+from app.core.runtime_config import current_runtime_config
 
 
 PATTERNS: list[tuple[str, str, re.Pattern[str]]] = [
@@ -32,8 +33,13 @@ class RedactionResult:
 
 
 def redact_text(value: str, preview_chars: int | None = None) -> RedactionResult:
-    settings = get_settings()
-    limit = preview_chars or settings.preview_chars
+    if preview_chars is not None:
+        limit = preview_chars
+    else:
+        try:
+            limit = current_runtime_config().preview_chars
+        except Exception:
+            limit = get_settings().preview_chars
     redacted = value
     counts: dict[str, int] = {}
     for key, replacement, pattern in PATTERNS:

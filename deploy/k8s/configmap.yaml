@@ -7,6 +7,7 @@ data:
   DEFAULT_PROVIDER: "mock"
   DEFAULT_MODEL: "mock-fast"
   CONTEXT_WINDOW_MESSAGES: "8"
+  CONTEXT_WINDOW_TOKENS: "1200"
   PREVIEW_CHARS: "500"
   REDIS_URL: "redis://llmtrace-redis:6379/0"
   SDK_INGESTION_URL: "http://127.0.0.1:8000/api/ingest/logs"

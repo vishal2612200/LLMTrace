@@ -4,14 +4,14 @@ Fullstack LLM inference logging and ingestion system for the engineering assignm
 
 ## What It Does
 
-- React chatbot with multi-turn context, streaming responses, cancel, list, and resume.
+- React chatbot with streaming responses, cancel/list/resume, checkpointed multi-turn context, token-budgeted recall, rolling summaries, structured memory, and a context debug view.
 - FastAPI backend with a lightweight LLM wrapper around provider calls.
 - Near-real-time inference ingestion through Redis Streams and a worker.
 - Optional ingestion API key and in-memory rate limiting for log ingestion.
-- Sensitive-data redaction before logs, queues, analytics, traces, or database writes.
-- Postgres storage for conversations, messages, inference requests, redacted event payloads, and redaction audit metadata.
+- Sensitive-data redaction before logs, queues, analytics, traces, model context, or database writes.
+- Postgres storage for conversations, redacted messages, context checkpoints, inference requests, redacted event payloads, and redaction audit metadata.
 - Dashboard for request volume, latency, errors, token usage, and provider/model breakdown.
-- Harness observability for agent runs, selected context, tool calls, deterministic verification, approval gates, failure taxonomy, and eval cases.
+- Harness observability for agent runs, selected context, tool calls, deterministic verification, approval gates, typed dry-run execution, failure taxonomy, and scored eval cases.
 - Docker Compose setup plus self-hosted Kubernetes manifests.
 
 ## Quick Start
@@ -61,7 +61,8 @@ npm run dev
 | `CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | Allowed frontend origins. |
 | `DEFAULT_PROVIDER` | `mock` | Provider used when the request does not specify one. |
 | `DEFAULT_MODEL` | `mock-fast` | Model used when the request does not specify one. |
-| `CONTEXT_WINDOW_MESSAGES` | `8` | Number of recent redacted messages used for chat context. |
+| `CONTEXT_WINDOW_MESSAGES` | `8` | Maximum recent messages considered before token budgeting. |
+| `CONTEXT_WINDOW_TOKENS` | `1200` | Token budget for full redacted context sent to the model. |
 | `PREVIEW_CHARS` | `500` | Max stored preview length after redaction. |
 | `SDK_INGESTION_URL` | `http://127.0.0.1:8000/api/ingest/logs` | HTTP endpoint used by the wrapper to emit lifecycle events. |
 | `INGESTION_API_KEY` | `dev-ingestion-key` | Optional shared key required by ingestion and DLQ endpoints. |
@@ -83,7 +84,7 @@ npm run dev
 | `POST` | `/api/chat/stream` | SSE chat stream. Body: `message`, optional `conversation_id`, `provider`, `model`. |
 | `POST` | `/api/chat/{conversation_id}/cancel` | Cancels an active conversation/request. |
 | `GET` | `/api/conversations` | Lists conversation summaries. |
-| `GET` | `/api/conversations/{conversation_id}` | Returns messages and related inference logs. |
+| `GET` | `/api/conversations/{conversation_id}` | Returns messages, rolling summary, structured memory, checkpoints, and related inference logs. |
 | `POST` | `/api/ingest/logs` | Receives SDK lifecycle events after validation/redaction. |
 | `GET` | `/api/ingest/dlq` | Lists recent DLQ entries for local admin/debug use. |
 | `POST` | `/api/ingest/dlq/{message_id}/replay` | Replays a DLQ event by Redis message id. |
@@ -98,8 +99,13 @@ npm run dev
 | `GET` | `/api/harness/runs` | Lists recent agent runs with status, risk, failure, verification, and approval summaries. |
 | `GET` | `/api/harness/runs/{run_id}` | Returns run detail with tool calls, verification results, approvals, and eval runs. |
 | `GET` | `/api/harness/metrics/summary` | Agent run counts, pass rate, failure categories, approval counts, and tool latency. |
+| `POST` | `/api/harness/smoke` | Creates an executable backend-safe harness smoke run with provider checks, approval gate, and dry-run tool path. |
 | `GET` | `/api/harness/evals` | Lists loaded eval cases. |
 | `POST` | `/api/harness/evals/load-fixtures` | Loads JSON eval fixtures from `evals/` into Postgres idempotently. |
+| `POST` | `/api/harness/evals/{eval_id}/run` | Runs a deterministic eval case and records score/failure category. |
+| `GET` | `/api/settings/runtime` | Reads server-backed runtime defaults for provider, model, context message limit, token budget, and preview length. |
+| `PUT` | `/api/settings/runtime` | Updates server-backed runtime defaults. |
+| `GET` | `/api/settings/providers/status` | Reports selected provider and backend API-key readiness. |
 
 When `INGESTION_API_KEY` is set, ingestion and DLQ endpoints require `x-ingestion-key`.
 
@@ -113,7 +119,7 @@ docker compose config
 ./scripts/docker-smoke.sh
 ```
 
-The Docker smoke script validates one-command startup, `/health`, SSE chat streaming, redacted email/API-key output, conversation storage, worker ingestion, metrics updates, harness run creation, high-risk approval creation, tool-call redaction, and eval fixture loading. It tears down containers and volumes when done.
+The Docker smoke script validates one-command startup, `/health`, SSE chat streaming, redacted email/API-key output, conversation storage, worker ingestion, metrics updates, harness run creation, high-risk approval creation, tool-call redaction, and eval fixture loading. The Harness UI also exposes an internal backend-safe smoke path that creates a pending high-risk approval and executes a typed dry-run tool only after human approval.
 
 For browser-level smoke testing, start the backend on `127.0.0.1:8000` and frontend on `127.0.0.1:5173`, then run:
 
@@ -150,16 +156,16 @@ The harness layer is additive:
 task -> selected context -> tool calls -> verification -> approval -> final action -> eval feedback
 ```
 
-It does not execute autonomous coding-agent actions yet. It records the control-system telemetry an agent harness would need: what context was selected, what tools were attempted, how risky each action was, which deterministic checks ran, whether a human approval was required, and how failures were classified.
+It does not execute arbitrary autonomous coding-agent actions. It records the control-system telemetry an agent harness would need and includes a narrow typed dry-run handler for approved high-risk demo actions: what context was selected, what tools were attempted, how risky each action was, which deterministic checks ran, whether a human approval was required, what dry-run output was produced, and how failures were classified.
 
 An agent execution runtime would be a natural extension, but it is intentionally out of scope for this submission. Adding execution safely would require more than calling tools from the API; it would need typed tool permissions, sandboxing, approval enforcement, retries, rollback strategy, verification gates, and security review. For the assignment, the harness layer stays focused on observability and auditability rather than shipping a fragile autonomous runtime.
 
 Suggested upgrade path:
 
 1. Observe agent runs, tools, approvals, verification, and evals.
-2. Add a typed tool registry with dry-run execution.
-3. Enforce approval gates for high-risk tools.
-4. Add automated verification and eval runners.
+2. Expand the typed tool registry beyond the current dry-run migration handler.
+3. Enforce approval gates across all high-risk runtime tools.
+4. Add automated verification and eval orchestration.
 5. Add sandboxing, RBAC, rollback hooks, and a policy engine.
 
 ## Eval Fixtures
@@ -177,16 +183,19 @@ The loader is idempotent by `(name, category)`, so it is safe to run repeatedly 
 
 ## Sensitive-Data Policy
 
-Raw full prompt/response content is not persisted by default. The system stores:
+Raw prompt/response content is not persisted by default. The system stores:
 
 - redacted preview
+- full redacted content for context rebuilding
 - SHA-256 content hash
 - redaction metadata counts
+- rolling conversation summary and structured memory
+- context checkpoints containing the exact redacted model context
 - operational metadata such as provider, model, status, latency, tokens, timestamps
 
 The redaction pass covers common PII and secrets: email, phone, SSN, bearer tokens, JWTs, OpenAI/AWS/GitHub/Stripe-like keys, private keys, cookies, session tokens, and webhook secrets.
 
-Conversation context is rebuilt from redacted previews by design. This keeps multi-turn chat functional for the assignment while preventing raw sensitive text from being reloaded from storage.
+Conversation context is rebuilt from full redacted content, not truncated UI previews. The context builder sends the system prompt, rolling summary, structured memory, and recent redacted turns within `CONTEXT_WINDOW_TOKENS`. The Chat UI exposes the latest checkpoint and an expandable "Context sent to model" debug view for interview/demo inspection.
 
 The React UI also redacts common sensitive patterns in optimistic messages before streaming completes. Backend redaction remains the source of truth for all persisted data.
 
@@ -209,6 +218,7 @@ The React UI also redacts common sensitive patterns in optimistic messages befor
 - Conversation cancel/list/resume: yes.
 - DLQ API/dashboard replay: yes.
 - Harness observability: yes, additive run/tool/verification/approval/eval tracking.
+- Context checkpointing/debug UI: yes, persisted `conversation_checkpoints` plus visible redacted model context.
 
 ## Documentation
 
@@ -226,10 +236,10 @@ This implementation optimizes for correctness, debuggability, and clear replacem
 - Real OpenAI/Anthropic tests require provider API keys and are skipped by default.
 - Ingestion auth is a demo shared key, not tenant/project-scoped production auth.
 - Rate limiting is in-memory per backend process.
-- Harness APIs record and visualize agent control telemetry; they do not execute tools or enforce external runtime permissions yet.
+- Harness APIs record and visualize agent control telemetry and include a narrow typed dry-run execution path after approval; they do not execute arbitrary external tools or enforce production permissions yet.
 - Kubernetes manifests are deployable artifacts, not proof of a live cluster rollout.
 - Dashboards are eventually consistent because ingestion normalization is asynchronous.
-- Conversation context uses redacted previews, so recall is safer but less faithful than raw-content retention.
+- Conversation context uses full redacted content, rolling summaries, structured memory, token budgeting, and checkpoints; semantic sensitive-data detection is still regex-based.
 
 ## Improve With More Time
 

@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app.db.models import AgentRun, EvalCase, HumanApproval, ToolCall, VerificationResult
+from app.db.models import AgentRun, EvalCase, EvalRun, HumanApproval, ToolCall, VerificationResult
 from app.db.session import SessionLocal
 from app.main import app
 
@@ -79,7 +79,7 @@ def test_high_risk_tool_call_creates_pending_approval_and_blocks_run():
 
 def test_approval_decision_updates_audit_fields():
     run_id = client.post("/api/harness/runs", json={"name": "Deploy", "task": "Run migration"}).json()["id"]
-    client.post(f"/api/harness/runs/{run_id}/tool-calls", json={"tool_name": "deploy", "status": "started", "risk_level": "high"})
+    client.post(f"/api/harness/runs/{run_id}/tool-calls", json={"tool_name": "run_database_migration", "status": "started", "risk_level": "high"})
     db = SessionLocal()
     approval_id = db.query(HumanApproval).filter(HumanApproval.agent_run_id == run_id).one().id
     db.close()
@@ -92,10 +92,16 @@ def test_approval_decision_updates_audit_fields():
     assert response.status_code == 200
     db = SessionLocal()
     approval = db.query(HumanApproval).filter(HumanApproval.id == approval_id).one()
+    run = db.query(AgentRun).filter(AgentRun.id == run_id).one()
+    call = db.query(ToolCall).filter(ToolCall.agent_run_id == run_id).one()
     assert approval.status == "approved"
     assert approval.approver == "senior_engineer"
     assert approval.decision_reason == "Rollback plan reviewed"
     assert approval.decided_at is not None
+    assert run.status == "completed"
+    assert run.final_action == "Human approved: Rollback plan reviewed"
+    assert call.status == "completed"
+    assert "dry-run" in (call.tool_output_preview or "")
     db.close()
 
 
@@ -145,6 +151,51 @@ def test_eval_fixture_loader_imports_json_idempotently():
     assert second.json()["loaded"] == 0
     db = SessionLocal()
     assert db.query(EvalCase).count() >= 2
+    db.close()
+
+
+def test_run_eval_case_creates_run_tool_verification_and_eval_run():
+    client.post("/api/harness/evals/load-fixtures")
+    eval_case = client.get("/api/harness/evals").json()[0]
+
+    response = client.post(f"/api/harness/evals/{eval_case['id']}/run")
+
+    assert response.status_code == 200
+    run_id = response.json()["id"]
+    db = SessionLocal()
+    run = db.query(AgentRun).filter(AgentRun.id == run_id).one()
+    call = db.query(ToolCall).filter(ToolCall.agent_run_id == run_id, ToolCall.tool_name == "run_eval_case").one()
+    verification = db.query(VerificationResult).filter(VerificationResult.agent_run_id == run_id).one()
+    eval_run = db.query(EvalRun).filter(EvalRun.agent_run_id == run_id).one()
+    assert run.status == "completed"
+    assert run.failure_category == "none"
+    assert call.tool_name == "run_eval_case"
+    assert call.status == "completed"
+    assert verification.check_type == "eval"
+    assert verification.status == "passed"
+    assert eval_run.eval_case_id == eval_case["id"]
+    assert eval_run.status == "passed"
+    assert eval_run.score == 100
+    db.close()
+
+
+def test_create_smoke_run_creates_pending_approval_and_verification():
+    response = client.post("/api/harness/smoke")
+
+    assert response.status_code == 200
+    run_id = response.json()["id"]
+    db = SessionLocal()
+    run = db.query(AgentRun).filter(AgentRun.id == run_id).one()
+    call = db.query(ToolCall).filter(ToolCall.agent_run_id == run_id, ToolCall.tool_name == "run_database_migration").one()
+    approval = db.query(HumanApproval).filter(HumanApproval.agent_run_id == run_id).one()
+    verification = db.query(VerificationResult).filter(VerificationResult.agent_run_id == run_id).one()
+    assert run.status == "blocked_pending_approval"
+    assert call.risk_level == "high"
+    assert call.tool_input_json["token"] == "[API_KEY_REDACTED]"
+    assert approval.status == "pending"
+    assert verification.check_type == "smoke"
+    assert verification.command == "internal://docker-smoke/harness-subset"
+    assert verification.status == "passed"
     db.close()
 
 

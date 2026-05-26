@@ -38,21 +38,33 @@ export function ConversationsPage({ onResume }: { onResume: (id: string) => void
               <th>Provider</th>
               <th>Model</th>
               <th>Updated</th>
-              <th />
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6}>Loading conversations...</td>
+                <td colSpan={5}>Loading conversations...</td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6}>No conversations yet.</td>
+                <td colSpan={5}>No conversations yet.</td>
               </tr>
             ) : (
               rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  className="clickable-row"
+                  key={row.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Resume conversation ${row.title}`}
+                  onClick={() => onResume(row.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onResume(row.id);
+                    }
+                  }}
+                >
                   <td>
                     <span className="row-title">
                       <MessageSquareText size={16} /> {row.title}
@@ -64,9 +76,6 @@ export function ConversationsPage({ onResume }: { onResume: (id: string) => void
                   <td>{row.provider}</td>
                   <td>{row.model}</td>
                   <td>{new Date(row.updated_at).toLocaleString()}</td>
-                  <td>
-                    <button onClick={() => onResume(row.id)}>Resume</button>
-                  </td>
                 </tr>
               ))
             )}

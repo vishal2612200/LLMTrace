@@ -1,8 +1,124 @@
-export const API_BASE = import.meta.env.VITE_API_BASE ?? "http://localhost:8000";
-const INGESTION_KEY = import.meta.env.VITE_INGESTION_API_KEY;
+const SETTINGS_KEY = "llmtrace.runtimeSettings.cache";
+let transientIngestionKey = "";
+
+export const DEFAULT_RUNTIME_SETTINGS = {
+  apiBase: import.meta.env.VITE_API_BASE ?? "http://localhost:8000",
+  ingestionKey: import.meta.env.VITE_INGESTION_API_KEY ?? "",
+  defaultProvider: "mock",
+  defaultModel: "mock-fast",
+  contextWindowMessages: "8",
+  contextWindowTokens: "1200",
+  previewChars: "500",
+};
+
+export const API_BASE = DEFAULT_RUNTIME_SETTINGS.apiBase;
+
+export type RuntimeSettings = typeof DEFAULT_RUNTIME_SETTINGS;
+
+function readStoredSettings(): Partial<RuntimeSettings> {
+  try {
+    const stored = window.localStorage.getItem(SETTINGS_KEY);
+    const parsed = stored ? (JSON.parse(stored) as Partial<RuntimeSettings>) : {};
+    const { ingestionKey: _ingestionKey, ...nonSecret } = parsed;
+    return nonSecret;
+  } catch {
+    return {};
+  }
+}
+
+function normalizeSettings(settings: Partial<RuntimeSettings>): RuntimeSettings {
+  return {
+    apiBase: (settings.apiBase || DEFAULT_RUNTIME_SETTINGS.apiBase).trim().replace(/\/+$/, ""),
+    ingestionKey: (settings.ingestionKey ?? transientIngestionKey).trim(),
+    defaultProvider: (settings.defaultProvider || DEFAULT_RUNTIME_SETTINGS.defaultProvider).trim(),
+    defaultModel: (settings.defaultModel || DEFAULT_RUNTIME_SETTINGS.defaultModel).trim(),
+    contextWindowMessages: (settings.contextWindowMessages || DEFAULT_RUNTIME_SETTINGS.contextWindowMessages).trim(),
+    contextWindowTokens: (settings.contextWindowTokens || DEFAULT_RUNTIME_SETTINGS.contextWindowTokens).trim(),
+    previewChars: (settings.previewChars || DEFAULT_RUNTIME_SETTINGS.previewChars).trim(),
+  };
+}
+
+export function getRuntimeSettings(): RuntimeSettings {
+  return normalizeSettings(readStoredSettings());
+}
+
+export function saveRuntimeSettings(settings: Partial<RuntimeSettings>): RuntimeSettings {
+  const next = normalizeSettings({ ...getRuntimeSettings(), ...settings });
+  transientIngestionKey = next.ingestionKey;
+  const { ingestionKey: _ingestionKey, ...stored } = next;
+  window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(stored));
+  window.dispatchEvent(new CustomEvent<RuntimeSettings>("llmtrace:settings-changed", { detail: next }));
+  return next;
+}
+
+export function resetRuntimeSettings(): RuntimeSettings {
+  window.localStorage.removeItem(SETTINGS_KEY);
+  transientIngestionKey = "";
+  const next = normalizeSettings(DEFAULT_RUNTIME_SETTINGS);
+  window.dispatchEvent(new CustomEvent<RuntimeSettings>("llmtrace:settings-changed", { detail: next }));
+  return next;
+}
+
+export function subscribeRuntimeSettings(listener: (settings: RuntimeSettings) => void) {
+  function onSettingsChanged(event: Event) {
+    listener((event as CustomEvent<RuntimeSettings>).detail ?? getRuntimeSettings());
+  }
+
+  function onStorage(event: StorageEvent) {
+    if (event.key === SETTINGS_KEY) listener(getRuntimeSettings());
+  }
+
+  window.addEventListener("llmtrace:settings-changed", onSettingsChanged);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener("llmtrace:settings-changed", onSettingsChanged);
+    window.removeEventListener("storage", onStorage);
+  };
+}
+
+function apiBase() {
+  return getRuntimeSettings().apiBase;
+}
 
 function ingestionHeaders() {
-  return INGESTION_KEY ? { "x-ingestion-key": INGESTION_KEY } : undefined;
+  const ingestionKey = transientIngestionKey;
+  return ingestionKey ? { "x-ingestion-key": ingestionKey } : undefined;
+}
+
+export type ServerRuntimeSettings = {
+  default_provider: "mock" | "openai" | "anthropic";
+  default_model: string;
+  context_window_messages: number;
+  context_window_tokens: number;
+  preview_chars: number;
+};
+
+export type ProviderStatus = {
+  provider: "mock" | "openai" | "anthropic";
+  configured: boolean;
+  selected: boolean;
+  key_env_var: string | null;
+  detail: string;
+};
+
+function serverToRuntime(settings: ServerRuntimeSettings): Partial<RuntimeSettings> {
+  return {
+    defaultProvider: settings.default_provider,
+    defaultModel: settings.default_model,
+    contextWindowMessages: String(settings.context_window_messages),
+    contextWindowTokens: String(settings.context_window_tokens),
+    previewChars: String(settings.preview_chars),
+  };
+}
+
+function runtimeToServer(settings: RuntimeSettings): ServerRuntimeSettings {
+  return {
+    default_provider: settings.defaultProvider as ServerRuntimeSettings["default_provider"],
+    default_model: settings.defaultModel,
+    context_window_messages: Number(settings.contextWindowMessages),
+    context_window_tokens: Number(settings.contextWindowTokens),
+    preview_chars: Number(settings.previewChars),
+  };
 }
 
 export type ConversationSummary = {
@@ -37,9 +153,23 @@ export type InferenceLog = {
   error_message: string | null;
 };
 
+export type ConversationCheckpoint = {
+  id: string;
+  sequence: number;
+  reason: string;
+  summary: string;
+  message_count: number;
+  token_count: number;
+  context_messages: Array<Record<string, unknown>>;
+  created_at: string;
+};
+
 export type ConversationDetail = ConversationSummary & {
+  rolling_summary: string;
+  structured_memory: Record<string, string[]>;
   messages: Message[];
   inference_logs: InferenceLog[];
+  checkpoints: ConversationCheckpoint[];
 };
 
 export type MetricsSummary = {
@@ -122,6 +252,17 @@ export type HumanApproval = {
   decided_at: string | null;
 };
 
+export type EvalRun = {
+  id: string;
+  eval_case_id: string;
+  agent_run_id: string | null;
+  status: string;
+  score: number | null;
+  failure_category: string;
+  result_summary: string | null;
+  created_at: string;
+};
+
 export type EvalCase = {
   id: string;
   name: string;
@@ -143,7 +284,7 @@ export type AgentRunDetail = AgentRunSummary & {
   tool_calls: ToolCall[];
   verification_results: VerificationResult[];
   approvals: HumanApproval[];
-  eval_runs: Array<Record<string, unknown>>;
+  eval_runs: EvalRun[];
 };
 
 export type HarnessMetricsSummary = {
@@ -157,13 +298,13 @@ export type HarnessMetricsSummary = {
 };
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`);
+  const response = await fetch(`${apiBase()}${path}`);
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
 
 async function getIngestionJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { headers: ingestionHeaders() });
+  const response = await fetch(`${apiBase()}${path}`, { headers: ingestionHeaders() });
   if (!response.ok) throw new Error(await response.text());
   return response.json();
 }
@@ -174,9 +315,34 @@ export const api = {
   metricsSummary: () => getJson<MetricsSummary>("/api/metrics/summary"),
   metricsTimeseries: () => getJson<TimeseriesPoint[]>("/api/metrics/timeseries"),
   metricsProviders: () => getJson<ProviderMetric[]>("/api/metrics/providers"),
+  runtimeSettings: async () => {
+    const settings = await getJson<ServerRuntimeSettings>("/api/settings/runtime");
+    return saveRuntimeSettings({ ...serverToRuntime(settings), ingestionKey: transientIngestionKey });
+  },
+  updateRuntimeSettings: async (settings: RuntimeSettings) => {
+    const response = await fetch(`${apiBase()}/api/settings/runtime`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(runtimeToServer(settings)),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    const saved = (await response.json()) as ServerRuntimeSettings;
+    return saveRuntimeSettings({ ...serverToRuntime(saved), apiBase: settings.apiBase, ingestionKey: settings.ingestionKey });
+  },
+  resetRuntimeSettings: async () => {
+    const response = await fetch(`${apiBase()}/api/settings/runtime/reset`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    const reset = (await response.json()) as ServerRuntimeSettings;
+    return saveRuntimeSettings({
+      ...serverToRuntime(reset),
+      apiBase: getRuntimeSettings().apiBase,
+      ingestionKey: transientIngestionKey,
+    });
+  },
+  providerStatuses: () => getJson<ProviderStatus[]>("/api/settings/providers/status"),
   dlq: () => getIngestionJson<DlqEntry[]>("/api/ingest/dlq"),
   replayDlq: async (id: string) => {
-    const response = await fetch(`${API_BASE}/api/ingest/dlq/${encodeURIComponent(id)}/replay`, {
+    const response = await fetch(`${apiBase()}/api/ingest/dlq/${encodeURIComponent(id)}/replay`, {
       method: "POST",
       headers: ingestionHeaders(),
     });
@@ -187,13 +353,32 @@ export const api = {
   harnessRun: (id: string) => getJson<AgentRunDetail>(`/api/harness/runs/${id}`),
   harnessMetricsSummary: () => getJson<HarnessMetricsSummary>("/api/harness/metrics/summary"),
   harnessEvals: () => getJson<EvalCase[]>("/api/harness/evals"),
+  runHarnessSmoke: async () => {
+    const response = await fetch(`${apiBase()}/api/harness/smoke`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<{ id: string }>;
+  },
+  runHarnessEval: async (id: string) => {
+    const response = await fetch(`${apiBase()}/api/harness/evals/${encodeURIComponent(id)}/run`, { method: "POST" });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<{ id: string }>;
+  },
+  decideHarnessApproval: async (id: string, status: "approved" | "rejected", decisionReason: string) => {
+    const response = await fetch(`${apiBase()}/api/harness/approvals/${encodeURIComponent(id)}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status, approver: "ui_operator", decision_reason: decisionReason }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<{ id: string }>;
+  },
   loadHarnessFixtures: async () => {
-    const response = await fetch(`${API_BASE}/api/harness/evals/load-fixtures`, { method: "POST" });
+    const response = await fetch(`${apiBase()}/api/harness/evals/load-fixtures`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
     return response.json() as Promise<{ loaded: number; skipped: number }>;
   },
   cancel: async (conversationId: string) => {
-    const response = await fetch(`${API_BASE}/api/chat/${conversationId}/cancel`, { method: "POST" });
+    const response = await fetch(`${apiBase()}/api/chat/${conversationId}/cancel`, { method: "POST" });
     if (!response.ok) throw new Error(await response.text());
     return response.json();
   },
@@ -210,7 +395,7 @@ export async function streamChat(
   body: { message: string; conversation_id?: string; provider?: string; model?: string },
   handlers: StreamHandlers,
 ) {
-  const response = await fetch(`${API_BASE}/api/chat/stream`, {
+  const response = await fetch(`${apiBase()}/api/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

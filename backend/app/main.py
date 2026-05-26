@@ -8,6 +8,7 @@ from app.api.conversations import router as conversations_router
 from app.api.harness import router as harness_router
 from app.api.ingestion import router as ingestion_router
 from app.api.metrics import router as metrics_router
+from app.api.settings import router as settings_router
 from app.core.config import get_settings
 from app.db.session import init_db
 
@@ -41,3 +42,4 @@ app.include_router(conversations_router)
 app.include_router(harness_router)
 app.include_router(ingestion_router)
 app.include_router(metrics_router)
+app.include_router(settings_router)

@@ -7,6 +7,7 @@ import { SettingsPage } from "./SettingsPage";
 const apiMock = vi.hoisted(() => ({
   providerStatuses: vi.fn(),
   resetRuntimeSettings: vi.fn(),
+  updateProviderKey: vi.fn(),
   updateRuntimeSettings: vi.fn(),
 }));
 
@@ -18,6 +19,7 @@ vi.mock("../api/client", async () => {
       ...actual.api,
       providerStatuses: apiMock.providerStatuses,
       resetRuntimeSettings: apiMock.resetRuntimeSettings,
+      updateProviderKey: apiMock.updateProviderKey,
       updateRuntimeSettings: apiMock.updateRuntimeSettings,
     },
   };
@@ -31,6 +33,7 @@ describe("SettingsPage", () => {
   beforeEach(() => {
     window.localStorage.clear();
     apiMock.resetRuntimeSettings.mockReset();
+    apiMock.updateProviderKey.mockReset();
     apiMock.updateRuntimeSettings.mockReset();
     apiMock.providerStatuses.mockReset();
     apiMock.updateRuntimeSettings.mockImplementation(async (settings) => settings);
@@ -47,6 +50,14 @@ describe("SettingsPage", () => {
       contextWindowMessages: "8",
       contextWindowTokens: "1200",
       previewChars: "500",
+    });
+    apiMock.updateProviderKey.mockResolvedValue({
+      provider: "openai",
+      configured: true,
+      selected: false,
+      key_env_var: "OPENAI_API_KEY",
+      detail: "Ready. API key configured from Settings.",
+      key_source: "runtime",
     });
   });
 
@@ -87,6 +98,18 @@ describe("SettingsPage", () => {
     expect(screen.getByLabelText("Settings default provider")).toHaveValue("openai");
     expect(screen.getByLabelText("Settings default model")).toHaveValue("gpt-5-mini");
     expect(screen.getByText("Unsaved provider setup")).toBeInTheDocument();
-    expect(screen.getByText("Missing OPENAI_API_KEY in backend environment.")).toBeInTheDocument();
+    expect(screen.getAllByText("Missing OPENAI_API_KEY in backend environment.").length).toBeGreaterThan(0);
+  });
+
+  it("saves provider API keys through backend settings without local storage persistence", async () => {
+    const user = userEvent.setup();
+    render(<SettingsPage />);
+
+    await user.type(screen.getByLabelText("OpenAI API key"), "sk-test-runtime-key");
+    await user.click(screen.getAllByRole("button", { name: "Save key" })[0]);
+
+    await waitFor(() => expect(apiMock.updateProviderKey).toHaveBeenCalledWith("openai", "sk-test-runtime-key"));
+    expect(window.localStorage.getItem("llmtrace.runtimeSettings.cache") ?? "").not.toContain("sk-test-runtime-key");
+    expect(await screen.findByText("Configured from Settings.")).toBeInTheDocument();
   });
 });

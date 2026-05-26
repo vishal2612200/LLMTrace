@@ -43,6 +43,7 @@ const apiRows = [
   ["PUT", "/api/settings/runtime", "Updates server-backed runtime defaults."],
   ["POST", "/api/settings/runtime/reset", "Resets runtime defaults back to environment configuration."],
   ["GET", "/api/settings/providers/status", "Reports selected provider and backend API-key readiness for OpenAI/Anthropic."],
+  ["PUT", "/api/settings/providers/{provider}/key", "Stores or clears a runtime OpenAI/Anthropic API-key override without echoing the secret."],
 ];
 
 const schemaRows = [
@@ -52,7 +53,7 @@ const schemaRows = [
   ["inference_requests", "Normalized request metadata: provider, model, status, latency, token counts, and error fields."],
   ["inference_events", "Idempotent processed SDK events after schema validation and redaction."],
   ["redaction_audit", "Counts of sensitive values removed from ingestion payloads."],
-  ["runtime_settings", "Server-backed runtime overrides for provider, model, context message limit, token budget, and preview length."],
+  ["runtime_settings", "Server-backed runtime overrides for provider, model, context limits, preview length, and optional provider-key setup metadata."],
   ["agent_runs", "Harness-level task, context, failure taxonomy, and final action."],
   ["tool_calls", "Redacted tool input/output, latency, retries, status, and risk."],
   ["verification_results", "Deterministic check outputs with expected and forbidden file metadata."],

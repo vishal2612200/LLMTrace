@@ -6,10 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import get_settings
 from app.core.ids import new_id
 from app.core.redaction import redact_payload, redact_text
-from app.core.runtime_config import get_runtime_config
+from app.core.runtime_config import get_runtime_config, runtime_provider_api_key, runtime_provider_key_source
 from app.core.time import now_utc
 from app.db.models import AgentRun, EvalCase, EvalRun, HumanApproval, ToolCall, VerificationResult
 from app.db.session import get_db
@@ -220,13 +219,14 @@ def _execute_typed_tool(db: Session, run: AgentRun, call: ToolCall) -> None:
 
 def _provider_ready(db: Session) -> tuple[bool, str]:
     runtime = get_runtime_config(db)
-    settings = get_settings()
     if runtime.default_provider == "mock":
         return True, "mock provider ready"
     if runtime.default_provider == "openai":
-        return bool(settings.openai_api_key), "OPENAI_API_KEY configured" if settings.openai_api_key else "OPENAI_API_KEY missing"
+        source = runtime_provider_key_source(db, "openai")
+        return bool(runtime_provider_api_key(db, "openai")), "OPENAI_API_KEY configured" if source else "OPENAI_API_KEY missing"
     if runtime.default_provider == "anthropic":
-        return bool(settings.anthropic_api_key), "ANTHROPIC_API_KEY configured" if settings.anthropic_api_key else "ANTHROPIC_API_KEY missing"
+        source = runtime_provider_key_source(db, "anthropic")
+        return bool(runtime_provider_api_key(db, "anthropic")), "ANTHROPIC_API_KEY configured" if source else "ANTHROPIC_API_KEY missing"
     return False, f"unsupported provider {runtime.default_provider}"
 
 

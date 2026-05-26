@@ -83,6 +83,8 @@ export function SettingsPage() {
   const [saveStatus, setSaveStatus] = React.useState("Saved locally");
   const [validationError, setValidationError] = React.useState<string | null>(null);
   const [providerStatuses, setProviderStatuses] = React.useState<ProviderStatus[]>([]);
+  const [providerKeys, setProviderKeys] = React.useState<Record<"openai" | "anthropic", string>>({ openai: "", anthropic: "" });
+  const [providerKeyStatus, setProviderKeyStatus] = React.useState<Record<string, string>>({});
 
   React.useEffect(() => {
     setDraft(settings);
@@ -137,6 +139,26 @@ export function SettingsPage() {
     setDraft((current) => ({ ...current, defaultProvider: provider, defaultModel: model }));
     setSaveStatus("Unsaved provider setup");
     setValidationError(null);
+  }
+
+  async function saveProviderKey(provider: "openai" | "anthropic") {
+    const apiKey = providerKeys[provider].trim();
+    if (!apiKey) {
+      setProviderKeyStatus((current) => ({ ...current, [provider]: "Enter a key to configure this provider." }));
+      return;
+    }
+    setProviderKeyStatus((current) => ({ ...current, [provider]: "Saving key to backend runtime settings..." }));
+    try {
+      await api.updateProviderKey(provider, apiKey);
+      setProviderKeys((current) => ({ ...current, [provider]: "" }));
+      setProviderKeyStatus((current) => ({ ...current, [provider]: "Configured from Settings." }));
+      await refreshProviderStatuses();
+    } catch (error) {
+      setProviderKeyStatus((current) => ({
+        ...current,
+        [provider]: error instanceof Error ? `Key not saved: ${error.message}` : "Key not saved.",
+      }));
+    }
   }
 
   async function saveSettings() {
@@ -267,6 +289,53 @@ export function SettingsPage() {
           <button onClick={() => void resetSettings()}>
             <RotateCcw size={18} /> Reset defaults
           </button>
+        </div>
+      </section>
+
+      <section className="panel utility-card">
+        <UtilityTitle icon={<KeyRound size={18} />} title="Provider API Keys" meta="Backend runtime overrides" />
+        <p>Configure real providers here without editing Docker or restarting the backend. Secrets are sent to the backend and are not stored in browser localStorage or returned by the API.</p>
+        <div className="provider-key-grid">
+          {providerPresets
+            .filter((preset) => preset.provider === "openai" || preset.provider === "anthropic")
+            .map((preset) => {
+              const keyProvider = preset.provider as "openai" | "anthropic";
+              const providerStatus = providerStatuses.find((item) => item.provider === keyProvider);
+              return (
+                <article className="provider-key-card" key={keyProvider}>
+                  <div>
+                    <strong>{preset.label}</strong>
+                    <span>{providerStatus?.detail ?? "Provider readiness not checked yet."}</span>
+                  </div>
+                  <label>
+                    <span>{preset.label} API key</span>
+                    <input
+                      aria-label={`${preset.label} API key`}
+                      type="password"
+                      value={providerKeys[keyProvider]}
+                      onChange={(event) => {
+                        setProviderKeys((current) => ({ ...current, [keyProvider]: event.target.value }));
+                        setProviderKeyStatus((current) => ({ ...current, [keyProvider]: "" }));
+                      }}
+                      placeholder={keyProvider === "openai" ? "sk-..." : "sk-ant-..."}
+                    />
+                  </label>
+                  <div className="settings-actions compact">
+                    <button type="button" onClick={() => void saveProviderKey(keyProvider)}>
+                      <KeyRound size={18} /> Save key
+                    </button>
+                    <button type="button" onClick={() => applyProviderPreset(preset.provider, preset.model)}>
+                      <CheckCircle2 size={18} /> Select {preset.label}
+                    </button>
+                  </div>
+                  {(providerKeyStatus[keyProvider] || providerStatus?.key_source) && (
+                    <small className={providerStatus?.configured ? "provider-ready" : "provider-missing"}>
+                      {providerKeyStatus[keyProvider] || `Source: ${providerStatus?.key_source}`}
+                    </small>
+                  )}
+                </article>
+              );
+            })}
         </div>
       </section>
 

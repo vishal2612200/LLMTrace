@@ -7,6 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY backend/alembic.ini .
 COPY backend/migrations ./migrations
 COPY backend/app ./app
+COPY backend/llmtrace_sdk ./llmtrace_sdk
 COPY backend/pyproject.toml .
 COPY evals ./evals
 RUN pip install --no-cache-dir .

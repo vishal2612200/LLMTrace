@@ -38,15 +38,15 @@ Upgrade path: add idempotency keys, retry policy, DLQ replay UI, and backpressur
 
 ## SDK-to-Ingestion HTTP Path
 
-Decision: the wrapper posts events to `POST /api/ingest/logs` and falls back to the internal publisher when local endpoint delivery fails.
+Decision: the Python SDK package `llmtrace_sdk` owns the ingestion event schema, HTTP delivery, environment config, API-key header, and lifecycle helpers. The backend wrapper uses that SDK to post events to `POST /api/ingest/logs` and falls back to the internal publisher when local endpoint delivery fails.
 
 Why chosen now: it matches the assignment wording while keeping local demos resilient.
 
-Tradeoff: self-HTTP inside the backend is less efficient than a direct in-process call.
+Tradeoff: self-HTTP inside the backend is less efficient than a direct in-process call, but it proves the same SDK contract external Python callers would use.
 
-What breaks at scale: high event volume should avoid loopback HTTP overhead and use a dedicated SDK/client package.
+What breaks at scale: high event volume needs batching, retry backoff, async queueing, and project-scoped signed auth.
 
-Upgrade path: extract a versioned SDK with batching, retry policy, backoff, and signed project keys.
+Upgrade path: publish `llmtrace_sdk` as a versioned package and add batching, retry policy, backoff, and signed project keys.
 
 ## Lightweight Ingestion Auth and Rate Limit
 
@@ -55,6 +55,16 @@ Decision: protect ingestion endpoints with optional `x-ingestion-key` and in-mem
 Why chosen now: demonstrates production awareness without adding auth infrastructure.
 
 Tradeoff: in-memory limits are per-process and reset on restart.
+
+## Runtime Provider Key Setup
+
+Decision: allow Settings to store OpenAI/Anthropic runtime key overrides in backend runtime settings, while status responses only return configured/not configured and source metadata.
+
+Why chosen now: reviewers can switch from mock to real providers during a live demo without restarting Docker or editing environment files.
+
+Tradeoff: this is convenient for local demo setup, but production should use a secret manager rather than storing provider keys in the application database.
+
+Upgrade path: replace runtime key storage with encrypted project-scoped secrets, RBAC, audit logs, and key rotation.
 
 What breaks at scale: multiple backend replicas need a shared limiter and scoped tenant/project credentials.
 
@@ -94,7 +104,7 @@ Tradeoff: less reusable across services.
 
 What breaks at scale: multiple apps would duplicate provider logic.
 
-Upgrade path: extract a versioned Python/npm SDK after interface stabilizes.
+Upgrade path: move provider adapters into richer versioned Python/npm SDKs after the provider interface stabilizes.
 
 ## SSE Streaming
 

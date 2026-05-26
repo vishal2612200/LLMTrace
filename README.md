@@ -27,9 +27,9 @@ Open:
 - Backend health: http://localhost:8000/health
 - OpenAPI: http://localhost:8000/docs
 
-The mock provider is the default, so no API key is required. To use real providers, set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` and select the matching provider/model in the UI.
+The mock provider is the default, so no API key is required. To use real providers, set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, or configure a runtime provider key from the Settings page, then select the matching provider/model in the UI.
 
-The backend SDK wrapper posts inference events to `SDK_INGESTION_URL` by default and falls back to the internal publisher if the endpoint is unavailable during local development.
+The backend uses the first-party Python SDK package in `backend/llmtrace_sdk`. The SDK posts inference events to `SDK_INGESTION_URL` by default and the backend fallback path publishes internally if the endpoint is unavailable during local development.
 
 ## Local Development
 
@@ -106,8 +106,33 @@ npm run dev
 | `GET` | `/api/settings/runtime` | Reads server-backed runtime defaults for provider, model, context message limit, token budget, and preview length. |
 | `PUT` | `/api/settings/runtime` | Updates server-backed runtime defaults. |
 | `GET` | `/api/settings/providers/status` | Reports selected provider and backend API-key readiness. |
+| `PUT` | `/api/settings/providers/{provider}/key` | Stores or clears a runtime OpenAI/Anthropic API-key override without echoing the secret. |
 
 When `INGESTION_API_KEY` is set, ingestion and DLQ endpoints require `x-ingestion-key`.
+
+## Python SDK
+
+The Python SDK entrypoint is `llmtrace_sdk.LLMTraceClient`. It is packaged with the backend for this submission and can be imported by any Python service that has the backend package installed.
+
+```python
+from llmtrace_sdk import LLMTraceClient
+
+async with LLMTraceClient(
+    ingestion_url="http://127.0.0.1:8000/api/ingest/logs",
+    api_key="dev-ingestion-key",
+) as trace:
+    await trace.request_started(
+        event_id="evt_12345678",
+        request_id="req_12345678",
+        conversation_id="conv_12345678",
+        provider="openai",
+        model="gpt-4.1-mini",
+        prompt_tokens=120,
+        input_preview="redacted prompt preview",
+    )
+```
+
+The SDK owns the public ingestion event contract (`IngestionEvent`), HTTP delivery, API-key header, environment config, and lifecycle helpers for `request_started`, `token_chunk`, `request_completed`, `request_failed`, and `request_cancelled`. The backend-specific `app.ingestion.client.SDKIngestionClient` now delegates HTTP delivery to this SDK and only adds local inline fallback behavior for demos.
 
 ## Verification
 
@@ -142,6 +167,7 @@ Screenshots are written to `/tmp/llmtrace-chat.png` and `/tmp/llmtrace-dashboard
 React UI
   -> FastAPI chat API
   -> LLM wrapper/provider adapter
+  -> Python SDK client
   -> sensitive-data redaction
   -> ingestion API / event publisher
   -> Redis Streams
@@ -229,7 +255,7 @@ The React UI also redacts common sensitive patterns in optimistic messages befor
 
 ## Tradeoffs
 
-This implementation optimizes for correctness, debuggability, and clear replacement boundaries. Redis Streams can become Kafka/NATS, Postgres analytics can move to ClickHouse/Timescale, and in-app provider adapters can become a versioned SDK once the interface stabilizes.
+This implementation optimizes for correctness, debuggability, and clear replacement boundaries. Redis Streams can become Kafka/NATS, Postgres analytics can move to ClickHouse/Timescale, the first-party Python SDK can be published independently, and in-app provider adapters can move into richer versioned SDKs once the interface stabilizes.
 
 ## Known Limitations
 
@@ -243,7 +269,7 @@ This implementation optimizes for correctness, debuggability, and clear replacem
 
 ## Improve With More Time
 
-- Extract ingestion SDK into versioned Python/npm packages.
+- Publish the Python SDK as an independent package and add an npm SDK with the same event contract.
 - Extend harness observability into an execution runtime through typed tools, dry-run mode, approval enforcement, verification runners, sandboxing, RBAC, rollback hooks, and policy checks.
 - Replace demo ingestion key with tenant/project scoped auth, RBAC, and distributed rate limits.
 - Add OpenTelemetry tracing across chat, provider, ingestion, worker, and analytics writes.

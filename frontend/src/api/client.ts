@@ -99,6 +99,7 @@ export type ProviderStatus = {
   selected: boolean;
   key_env_var: string | null;
   detail: string;
+  key_source?: string | null;
 };
 
 function serverToRuntime(settings: ServerRuntimeSettings): Partial<RuntimeSettings> {
@@ -340,6 +341,15 @@ export const api = {
     });
   },
   providerStatuses: () => getJson<ProviderStatus[]>("/api/settings/providers/status"),
+  updateProviderKey: async (provider: "openai" | "anthropic", apiKey: string) => {
+    const response = await fetch(`${apiBase()}/api/settings/providers/${provider}/key`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ api_key: apiKey }),
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return response.json() as Promise<ProviderStatus>;
+  },
   dlq: () => getIngestionJson<DlqEntry[]>("/api/ingest/dlq"),
   replayDlq: async (id: string) => {
     const response = await fetch(`${apiBase()}/api/ingest/dlq/${encodeURIComponent(id)}/replay`, {

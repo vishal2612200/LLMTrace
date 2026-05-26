@@ -73,3 +73,23 @@ def test_provider_status_reports_selected_provider_and_key_readiness():
     assert statuses["openai"]["selected"] is True
     assert statuses["openai"]["key_env_var"] == "OPENAI_API_KEY"
     assert "OPENAI_API_KEY" in statuses["openai"]["detail"]
+
+
+def test_provider_key_can_be_configured_from_settings_without_echoing_secret():
+    client = TestClient(app)
+
+    response = client.put("/api/settings/providers/openai/key", json={"api_key": "sk-test-runtime-key"})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "openai"
+    assert payload["configured"] is True
+    assert payload["key_source"] == "runtime"
+    assert "sk-test-runtime-key" not in response.text
+    assert payload["detail"] == "Ready. API key configured from Settings."
+
+    statuses = client.get("/api/settings/providers/status").json()
+    openai_status = next(item for item in statuses if item["provider"] == "openai")
+    assert openai_status["configured"] is True
+    assert openai_status["key_source"] == "runtime"
+    assert "sk-test-runtime-key" not in str(statuses)

@@ -1,10 +1,10 @@
-import httpx
 from redis.exceptions import RedisError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.ingestion.publisher import EventPublisher
 from app.ingestion.schemas import IngestionEvent
+from llmtrace_sdk import LLMTraceClient, LLMTraceSDKError
 
 
 class SDKIngestionClient:
@@ -15,19 +15,14 @@ class SDKIngestionClient:
 
     async def send(self, event: IngestionEvent) -> None:
         if self.settings.sdk_ingestion_url:
-            headers = {}
-            if self.settings.ingestion_api_key:
-                headers["x-ingestion-key"] = self.settings.ingestion_api_key
             try:
-                async with httpx.AsyncClient(timeout=2.0) as client:
-                    response = await client.post(
-                        self.settings.sdk_ingestion_url,
-                        headers=headers,
-                        json=event.model_dump(mode="json"),
-                    )
-                    response.raise_for_status()
+                async with LLMTraceClient(
+                    ingestion_url=self.settings.sdk_ingestion_url,
+                    api_key=self.settings.ingestion_api_key,
+                ) as client:
+                    await client.emit(event)
                     return
-            except (httpx.HTTPError, RuntimeError):
+            except (LLMTraceSDKError, RuntimeError):
                 if not self.settings.inline_ingestion_fallback:
                     raise
 

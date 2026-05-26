@@ -7,10 +7,11 @@ flowchart LR
   UI[React UI] --> Chat[FastAPI chat API]
   Chat --> Context[Context builder]
   Context --> Checkpoints[Conversation checkpoints]
-  Chat --> SDK[LLM wrapper]
-  SDK --> Provider[Mock/OpenAI/Anthropic]
-  SDK --> Redact[Sensitive-data redaction]
-  Redact --> HTTPIngest[POST /api/ingest/logs]
+  Chat --> Wrapper[LLM wrapper]
+  Wrapper --> Provider[Mock/OpenAI/Anthropic]
+  Wrapper --> Redact[Sensitive-data redaction]
+  Redact --> SDK[Python SDK client]
+  SDK --> HTTPIngest
   HTTPIngest --> Ingest[Ingestion publisher]
   Ingest --> Redis[Redis Streams]
   Redis --> Worker[Ingestion worker]
@@ -46,7 +47,7 @@ The harness layer is intentionally additive. Inference logging answers "what hap
 5. The context builder creates model context from the system prompt, rolling summary, structured memory, and recent redacted turns within `CONTEXT_WINDOW_TOKENS`.
 6. A `pre_model` checkpoint stores the exact redacted context sent to the model.
 7. LLM wrapper emits `request_started`.
-8. Wrapper posts lifecycle events to the ingestion API with optional API-key auth.
+8. The Python SDK client posts lifecycle events to the ingestion API with optional API-key auth.
 9. Provider adapter streams chunks through SSE.
 10. Wrapper emits token chunk events and one terminal event.
 11. Assistant response is redacted and stored as preview + full redacted content + hash.
@@ -70,7 +71,7 @@ The harness layer is intentionally additive. Inference logging answers "what hap
 - Ingestion uses event ids for idempotency at the event table.
 - Worker normalization is idempotent by request id.
 - Redis failures can fall back to inline normalization for local resilience.
-- SDK HTTP ingestion failures can fall back to the internal publisher for local resilience.
+- SDK HTTP ingestion failures can fall back to the internal publisher for local resilience when the backend wrapper is the caller.
 - Docker Compose runs Alembic from the backend container before serving traffic; the worker waits for backend health and does not run migrations.
 - Kubernetes uses a separate one-shot `llmtrace-migrate` Job before backend/worker Deployments to avoid migration races when replicas scale.
 - The local app startup still calls `create_all` as a development/test fallback, but Docker and production-like paths use migrations.
@@ -80,9 +81,10 @@ The harness layer is intentionally additive. Inference logging answers "what hap
 - Redis Streams is a lightweight event bus suited for this scope.
 - Postgres is the first analytics store; add partitioning/materialized views before OLAP migration.
 - Dashboards are eventually consistent because ingestion normalization is async.
-- Provider adapters are intentionally isolated for later SDK extraction.
+- Provider adapters are intentionally isolated. The ingestion client contract now lives in the first-party `llmtrace_sdk` Python package; provider adapters can be extracted into a richer SDK later.
 - Stored conversation context uses full redacted content, not raw messages or truncated previews. Context is token-budgeted, checkpointed, and augmented by rolling summary plus structured memory.
 - Ingestion auth/rate limiting is intentionally lightweight for the assignment; production should replace it with project-scoped auth and distributed rate limits.
+- OpenAI/Anthropic keys can come from backend environment variables or runtime Settings overrides. The status API reports readiness and source, but never returns the secret value.
 
 ## Explored Options and Tradeoffs
 
@@ -146,9 +148,9 @@ Upgrade path: replace heuristic memory extraction with model-assisted summarizat
 
 Explored options: direct provider calls in endpoints, in-app adapters, or a separate SDK/package.
 
-Chosen tradeoff: in-app adapters behind a lightweight wrapper. This keeps scope tight while still capturing provider/model/latency/tokens/status/errors/session/previews and posting lifecycle logs to ingestion.
+Chosen tradeoff: in-app provider adapters behind a lightweight wrapper, plus a real first-party Python ingestion SDK. This keeps provider scope tight while moving the ingestion event contract, HTTP delivery, API-key header, environment config, and lifecycle helpers into an importable SDK package.
 
-Upgrade path: extract the wrapper and provider adapters into versioned Python/npm SDKs with batching, retries, backoff, and contract tests.
+Upgrade path: publish `llmtrace_sdk` as a versioned Python package, add batching, retries, backoff, signed project keys, and then add an npm SDK with the same event contract.
 
 ### Harness Observability
 

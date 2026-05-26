@@ -467,6 +467,79 @@ td,
   margin-top: 4px;
 }
 
+.provider-key-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.provider-key-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(205, 216, 230, 0.72);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.66), rgba(247, 250, 253, 0.46)),
+    var(--surface-soft);
+  box-shadow: var(--shadow-sm);
+  padding: 14px;
+}
+
+.provider-key-card > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.provider-key-card strong {
+  color: var(--ink);
+  font-size: 15px;
+}
+
+.provider-key-card span,
+.provider-key-card small {
+  color: var(--ink-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.provider-key-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.provider-key-card label span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.provider-key-card input {
+  min-height: 40px;
+}
+
+.provider-key-setup {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid rgba(205, 216, 230, 0.72);
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.provider-key-setup label {
+  display: grid;
+  gap: 5px;
+}
+
+.provider-key-setup label span {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.provider-key-setup input {
+  min-height: 38px;
+}
+
 .provider-ready,
 .provider-missing {
   font-size: 12px;
@@ -2268,6 +2341,7 @@ th {
   .utility-grid,
   .schema-grid,
   .coverage-grid,
+  .provider-key-grid,
   .provider-setup-grid {
     grid-template-columns: 1fr;
   }

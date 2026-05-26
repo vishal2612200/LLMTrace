@@ -1,6 +1,6 @@
 # Schema
 
-Raw full prompts/responses are not stored by default. Message and inference payload storage uses redacted previews, SHA-256 hashes, redaction counts, and operational metadata.
+Raw prompts/responses are not stored by default. Message and inference payload storage uses redacted previews, full redacted content, SHA-256 hashes, redaction counts, context checkpoints, and operational metadata.
 
 ## `conversations`
 
@@ -14,6 +14,8 @@ Raw full prompts/responses are not stored by default. Message and inference payl
 | `created_at` | `DateTime` | UTC timestamp. |
 | `updated_at` | `DateTime` | UTC timestamp, updated on changes. |
 | `cancelled_at` | `DateTime nullable` | Set when cancellation is requested. |
+| `rolling_summary` | `Text` | Redacted summary of older turns outside the current token budget. |
+| `structured_memory` | `JSON` | Extracted redacted memory buckets: preferences, task state, decisions, and open TODOs. |
 
 Indexes: `ix_conversations_status`, `ix_conversations_updated_at`.
 
@@ -25,12 +27,29 @@ Indexes: `ix_conversations_status`, `ix_conversations_updated_at`.
 | `conversation_id` | `String(64)` | FK to `conversations.id`. |
 | `role` | `String(32)` | `user`, `assistant`, or `system`. |
 | `preview` | `Text` | Redacted content preview only. |
+| `redacted_content` | `Text` | Full redacted content used by the context builder. |
 | `content_hash` | `String(64)` | SHA-256 of original content for correlation/dedup. |
 | `token_count` | `Integer` | Lightweight token estimate. |
 | `redaction_metadata` | `JSON` | Counts by redaction type. |
 | `created_at` | `DateTime` | UTC timestamp. |
 
 Indexes: `ix_messages_conversation_id`.
+
+## `conversation_checkpoints`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `id` | `String(64)` | Primary key. |
+| `conversation_id` | `String(64)` | FK to `conversations.id`. |
+| `sequence` | `Integer` | Monotonic checkpoint number per conversation. |
+| `reason` | `String(64)` | `pre_model`, `turn_complete`, `failed`, or `cancelled`. |
+| `summary` | `Text` | Redacted checkpoint summary with message/token counts and latest-turn notes. |
+| `context_messages` | `JSON` | Exact redacted context array sent to the model for `pre_model`, or recent redacted context for terminal checkpoints. |
+| `message_count` | `Integer` | Messages present when the checkpoint was created. |
+| `token_count` | `Integer` | Estimated total message tokens at checkpoint time. |
+| `created_at` | `DateTime` | UTC timestamp. |
+
+Constraints/indexes: unique `uq_conversation_checkpoint_sequence`, `ix_conversation_checkpoints_conversation_id`, `ix_conversation_checkpoints_created_at`, `ix_conversation_checkpoints_reason`.
 
 ## `inference_requests`
 
@@ -78,6 +97,14 @@ Constraints/indexes: unique `uq_inference_events_event_id`, `ix_inference_events
 | `created_at` | `DateTime` | UTC timestamp. |
 
 Indexes: `ix_redaction_audit_source_id`, `ix_redaction_audit_source_type`.
+
+## `runtime_settings`
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| `key` | `String(64)` | Primary key, currently `app`. |
+| `value_json` | `JSON` | Server-backed runtime defaults: provider, model, context message limit, context token budget, and preview length. |
+| `updated_at` | `DateTime` | UTC timestamp. |
 
 ## `agent_runs`
 
@@ -183,6 +210,6 @@ Indexes: `ix_eval_runs_eval_case_id`, `ix_eval_runs_agent_run_id`, `ix_eval_runs
 
 ## Retention Path
 
-Raw prompts and responses are intentionally absent from the default schema. If raw retention is required later, add a separate encrypted vault table with short TTL, strict RBAC, audit logging, and deletion support instead of mixing raw content into operational tables.
+Raw prompts and responses are intentionally absent from the default schema. The default context path uses full redacted content plus checkpoints so resume remains useful without raw retention. If raw retention is required later, add a separate encrypted vault table with short TTL, strict RBAC, audit logging, and deletion support instead of mixing raw content into operational tables.
 
 The harness schema follows the same default: tool inputs, tool outputs, verification summaries, selected context, and approval reasons are redacted before persistence. The schema records enough control telemetry to debug agent behavior without storing raw secrets or full sensitive payloads.

@@ -5,6 +5,8 @@
 ```mermaid
 flowchart LR
   UI[React UI] --> Chat[FastAPI chat API]
+  Chat --> Context[Context builder]
+  Context --> Checkpoints[Conversation checkpoints]
   Chat --> SDK[LLM wrapper]
   SDK --> Provider[Mock/OpenAI/Anthropic]
   SDK --> Redact[Sensitive-data redaction]
@@ -13,6 +15,7 @@ flowchart LR
   Ingest --> Redis[Redis Streams]
   Redis --> Worker[Ingestion worker]
   Worker --> DB[(Postgres)]
+  Checkpoints --> DB
   DB --> Metrics[Metrics API]
   Metrics --> UI
 ```
@@ -32,18 +35,22 @@ flowchart LR
   Evals --> DB[(Postgres)]
 ```
 
-The harness layer is intentionally additive. Inference logging answers "what happened during an LLM call?" Harness logging answers "what control loop surrounded an agent action?" The current implementation records agent runs, selected context, tool-call telemetry, verification results, approval decisions, failure categories, and eval cases. It does not execute tools yet; that keeps the assignment focused while making the control-system model visible.
+The harness layer is intentionally additive. Inference logging answers "what happened during an LLM call?" Harness logging answers "what control loop surrounded an agent action?" The current implementation records agent runs, selected context, tool-call telemetry, verification results, approval decisions, failure categories, and eval cases. It also includes a narrow typed dry-run execution path after human approval for the UI smoke flow; arbitrary external tool execution remains out of scope.
 
 ## Chat Flow
 
 1. User sends message from React.
 2. FastAPI creates or resumes a conversation.
-3. User message is redacted and stored as preview + hash.
-4. LLM wrapper emits `request_started`.
-5. Wrapper posts lifecycle events to the ingestion API with optional API-key auth.
-6. Provider adapter streams chunks through SSE.
-7. Wrapper emits token chunk events and one terminal event.
-8. Assistant response is redacted and stored as preview + hash.
+3. User message is redacted and stored as preview + full redacted content + hash.
+4. The conversation memory layer updates rolling summary and structured memory buckets for preferences, task state, decisions, and open TODOs.
+5. The context builder creates model context from the system prompt, rolling summary, structured memory, and recent redacted turns within `CONTEXT_WINDOW_TOKENS`.
+6. A `pre_model` checkpoint stores the exact redacted context sent to the model.
+7. LLM wrapper emits `request_started`.
+8. Wrapper posts lifecycle events to the ingestion API with optional API-key auth.
+9. Provider adapter streams chunks through SSE.
+10. Wrapper emits token chunk events and one terminal event.
+11. Assistant response is redacted and stored as preview + full redacted content + hash.
+12. A terminal checkpoint, such as `turn_complete`, `failed`, or `cancelled`, records the post-turn state.
 
 ## Ingestion Flow
 
@@ -74,7 +81,7 @@ The harness layer is intentionally additive. Inference logging answers "what hap
 - Postgres is the first analytics store; add partitioning/materialized views before OLAP migration.
 - Dashboards are eventually consistent because ingestion normalization is async.
 - Provider adapters are intentionally isolated for later SDK extraction.
-- Stored conversation context uses redacted previews, not raw messages. This intentionally trades perfect recall for safer default observability.
+- Stored conversation context uses full redacted content, not raw messages or truncated previews. Context is token-budgeted, checkpointed, and augmented by rolling summary plus structured memory.
 - Ingestion auth/rate limiting is intentionally lightweight for the assignment; production should replace it with project-scoped auth and distributed rate limits.
 
 ## Explored Options and Tradeoffs
@@ -123,9 +130,17 @@ Upgrade path: introduce WebSockets only if the product needs client-driven realt
 
 Explored options: store raw content, store redacted full content, store redacted previews only, or send all payloads through a semantic classifier before persistence.
 
-Chosen tradeoff: redacted previews + hashes + metadata by default. This reduces risk while preserving debugging value. Regex detection is deterministic and testable, but can miss contextual sensitive data.
+Chosen tradeoff: redacted full content + previews + hashes + metadata by default. Full redacted content powers safer multi-turn recall, previews keep the UI concise, and hashes provide correlation without raw retention. Regex detection is deterministic and testable, but can miss contextual sensitive data.
 
 Upgrade path: add Presidio/classifier-based detection for high-risk fields, tenant-specific redaction policy, encrypted raw vault opt-in, short TTLs, RBAC, and audit logs.
+
+### Conversation Context Management
+
+Explored options: fixed message windows, token-budgeted recent turns, rolling summaries, structured memory, and durable checkpoints.
+
+Chosen tradeoff: combine token-budgeted recent redacted turns with rolling summary, structured memory buckets, and persisted checkpoints. This keeps resume behavior explainable in demos because the Chat UI can show the exact redacted context sent to the model.
+
+Upgrade path: replace heuristic memory extraction with model-assisted summarization/evaluation, add user-pinned memories, and attach context quality metrics to inference requests.
 
 ### Provider Integration
 
@@ -139,7 +154,7 @@ Upgrade path: extract the wrapper and provider adapters into versioned Python/np
 
 Explored options: replace inference logging with agent traces, integrate a full agent runtime, or add harness telemetry as a separate layer.
 
-Chosen tradeoff: additive harness telemetry. It demonstrates the control-system concepts around agents without destabilizing the existing inference logging architecture. The system records runs, context, tool calls, verification, approvals, failure taxonomy, and eval cases, but does not execute tools.
+Chosen tradeoff: additive harness telemetry with a constrained typed dry-run path. It demonstrates the control-system concepts around agents without destabilizing the existing inference logging architecture. The system records runs, context, tool calls, verification, approvals, failure taxonomy, and eval cases, and the UI smoke path executes only a registered dry-run handler after approval.
 
 Upgrade path: connect typed permissioned tools, policy enforcement, real approval gates, eval runners, and automated verification loops.
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.db.models import Conversation, InferenceRequest, Message
+from app.db.models import Conversation, ConversationCheckpoint, InferenceRequest, Message
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/conversations", tags=["conversations"])
@@ -41,12 +41,21 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
         .order_by(InferenceRequest.created_at.desc())
         .all()
     )
+    checkpoints = (
+        db.query(ConversationCheckpoint)
+        .filter(ConversationCheckpoint.conversation_id == conversation_id)
+        .order_by(ConversationCheckpoint.sequence.desc())
+        .limit(5)
+        .all()
+    )
     return {
         "id": conversation.id,
         "title": conversation.title,
         "status": conversation.status,
         "provider": conversation.provider,
         "model": conversation.model,
+        "rolling_summary": conversation.rolling_summary,
+        "structured_memory": conversation.structured_memory,
         "messages": [
             {
                 "id": message.id,
@@ -74,5 +83,18 @@ def get_conversation(conversation_id: str, db: Session = Depends(get_db)):
                 "ended_at": req.ended_at.isoformat() if req.ended_at else None,
             }
             for req in requests
+        ],
+        "checkpoints": [
+            {
+                "id": checkpoint.id,
+                "sequence": checkpoint.sequence,
+                "reason": checkpoint.reason,
+                "summary": checkpoint.summary,
+                "message_count": checkpoint.message_count,
+                "token_count": checkpoint.token_count,
+                "context_messages": checkpoint.context_messages,
+                "created_at": checkpoint.created_at.isoformat(),
+            }
+            for checkpoint in checkpoints
         ],
     }
